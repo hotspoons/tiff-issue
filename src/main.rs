@@ -123,7 +123,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() > 1{
         let path = &args[1];
-        let image_bytes = read_image_to_png_bytes(path, &Resize { w: 1650, h: 1280 }).unwrap();
+        let image_bytes = read_image_to_png_bytes(path, &Resize { w: 1280, h:1650 }).unwrap();
         println!("Image resized, {} bytes in final PNG representation", image_bytes.len());
     }
     else{
