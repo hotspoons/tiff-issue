@@ -94,7 +94,7 @@ fn image_preprocess_fax(bytes:Vec<u8>) -> Result<Vec<u8>, Box<dyn std::error::Er
 }
 
 pub fn read_bytes_to_png_bytes(mut bytes:Vec<u8>, framing: &Resize) -> Result<Vec<u8>, ImageError>{
-    if bytes.len() > 3 && bytes[0] == 73 && bytes[1] == 173 // big endian, fine for POC
+    if bytes.len() > 3 && bytes[0] == 73 && bytes[1] == 73 // big endian, fine for POC
         && bytes[2] == 42{
             bytes = image_preprocess_fax(bytes).unwrap();
             // TODO reconstruct a tiff or other image representation using the decompressed bitmap
