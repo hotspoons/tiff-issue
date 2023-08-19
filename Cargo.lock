@@ -556,6 +556,7 @@ dependencies = [
  "fast_image_resize",
  "fax",
  "image",
+ "tiff",
 ]
 
 [[package]]
