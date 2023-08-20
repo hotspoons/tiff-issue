@@ -19,7 +19,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["C:\\ws\\repos\\sttc\\tiff-issue\\data\\patent-drawing.png"],
+            "args": ["/media/import/media/Projects/tiff-issue/data/patent-drawing.tif"],
             "cwd": "${workspaceFolder}"
         },
         {
