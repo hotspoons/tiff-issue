@@ -4,7 +4,7 @@ use std::num::NonZeroU32;
 use std::time::SystemTime;
 use fax::{VecWriter, decoder, decoder::pels, BitWriter, Bits, Color};
 
-use image::{ImageError, ImageEncoder, ColorType, DynamicImage};
+use image::{ImageError, ImageEncoder, ColorType, DynamicImage, GrayImage};
 use image::codecs::png::PngEncoder;
 use image::io::Reader as ImageReader;
 use fast_image_resize as fr;
@@ -74,29 +74,52 @@ fn resize_dyn_img_to_png_bytes(img: DynamicImage, framing: &Resize) -> Result<Ve
 }
 
 
-fn image_preprocess_fax(bytes:Vec<u8>) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let width = 2560;
-    let mut writer = VecWriter::new();
-    let mut height = 0;
-    decoder::decode_g4(bytes.iter().cloned(), width, None,  |transitions| {
-        for c in pels(transitions, width) {
-            let bit = match c {
-                Color::Black => Bits { data: 1, len: 1 },
-                Color::White => Bits { data: 0, len: 1 }
-            };
-            writer.write(bit);
-        }
-        writer.pad();
-        height += 1;
-    });
-    let data = writer.finish();
-    Ok(data)
+fn image_preprocess_fax(bytes:Vec<u8>) -> Result<GrayImage, Box<dyn std::error::Error>> {
+    use tiff::decoder::Decoder;
+    use tiff::tags::Tag;
+    let mut decoder = Decoder::new(Cursor::new(bytes.as_slice())).unwrap();
+    let width = decoder.get_tag_u32(Tag::ImageWidth).unwrap();
+    let height = decoder.get_tag_u32(Tag::ImageLength).unwrap();
+    assert_eq!(decoder.get_tag_u32(Tag::Compression).unwrap(), 4);
+    assert_eq!(decoder.get_tag_u32(Tag::BitsPerSample).unwrap(), 1);
+    
+    let strip_offsets = decoder.get_tag_u32_vec(Tag::StripOffsets).unwrap();
+    let strip_lengths = decoder.get_tag_u32_vec(Tag::StripByteCounts).unwrap();
+
+    dbg!((height, width));
+
+    let mut image = GrayImage::new(width, height);
+
+    let mut rows = image.rows_mut();
+    let mut cols_read = 0;
+    for (&off, &len) in strip_offsets.iter().zip(strip_lengths.iter()) {
+        decoder.goto_offset(off).unwrap();
+        let bytes = std::iter::from_fn(|| decoder.read_byte().ok()).take(len as usize);
+
+        decoder::decode_g4(bytes, width as u16, None,  |transitions| {
+            let row = rows.next().unwrap();
+            for (c, px) in pels(transitions, width as u16).zip(row) {
+                let byte = match c {
+                    Color::Black => 0,
+                    Color::White => 255
+                };
+                px.0[0] = byte;
+            }
+
+            cols_read += 1;
+        });
+    }
+    
+    dbg!(cols_read);
+    Ok(image)
 }
 
 pub fn read_bytes_to_png_bytes(mut bytes:Vec<u8>, framing: &Resize) -> Result<Vec<u8>, ImageError>{
+    dbg!(&bytes[..3]);
     if bytes.len() > 3 && bytes[0] == 73 && bytes[1] == 73 // big endian, fine for POC
         && bytes[2] == 42{
-            bytes = image_preprocess_fax(bytes).unwrap();
+            let image = image_preprocess_fax(bytes).unwrap();
+            return resize_dyn_img_to_png_bytes(image.into(), framing);
             // TODO reconstruct a tiff or other image representation using the decompressed bitmap
         }
 
@@ -125,6 +148,7 @@ fn main() {
         let path = &args[1];
         let image_bytes = read_image_to_png_bytes(path, &Resize { w: 1280, h:1650 }).unwrap();
         println!("Image resized, {} bytes in final PNG representation", image_bytes.len());
+        std::fs::write("out.png", &image_bytes).unwrap();
     }
     else{
         println!("Usage - this_executable <path/to/input-image.any>");
